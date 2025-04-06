@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 )
 
 // MockResource represents a simple resource for testing
@@ -267,9 +268,6 @@ func TestAutoScaling(t *testing.T) {
 	for range 3 {
 		resources = append(resources, pooler.Get())
 	}
-
-	// Wait for auto-scaling to happen
-	time.Sleep(100 * time.Millisecond)
 
 	// Check if more resources were created (autoscaling should have triggered)
 	if rm.GetCreateCount() <= config.MinResources {
