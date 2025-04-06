@@ -4,7 +4,6 @@ import (
 	"errors"
 	"sync"
 	"testing"
-	"time"
 )
 
 // MockResource represents a simple resource for testing
@@ -241,9 +240,6 @@ func TestGetAndRelease(t *testing.T) {
 
 	// Release the resource
 	pooler.Release(resource)
-
-	// Give a little time for the resource to be added back
-	time.Sleep(10 * time.Millisecond)
 
 	// Check resource pool size is back to original
 	if len(pooler.resources) != config.MinResources {
