@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 )
 
 // MockResource represents a simple resource for testing
@@ -204,5 +205,49 @@ func TestNewPooler(t *testing.T) {
 				t.Errorf("Expected resources length to be %d, got %d", tc.expectedMinRes, len(pooler.resources))
 			}
 		})
+	}
+}
+
+func TestGetAndRelease(t *testing.T) {
+	rm := &MockResourceManager{}
+	config := PoolConfig[MockResource]{
+		ResourceManager:    rm,
+		MaxResources:       10,
+		MinResources:       5,
+		IdleTimeoutSeconds: 30,
+	}
+
+	pooler, err := NewPooler(config)
+	if err != nil {
+		t.Fatalf("Failed to create pooler: %v", err)
+	}
+
+	initialCount := rm.GetCreateCount()
+
+	// Get a resource
+	resource := pooler.Get()
+
+	// Check no new resources were created for a single Get
+	if rm.GetCreateCount() != initialCount {
+		t.Errorf("Expected no new resources to be created, but got %d new resources",
+			rm.GetCreateCount()-initialCount)
+	}
+
+	// Check resource pool size decreased
+	if len(pooler.resources) != config.MinResources-1 {
+		t.Errorf("Expected resources count to be %d, got %d",
+			config.MinResources-1, len(pooler.resources))
+	}
+
+	// Release the resource
+	pooler.Release(resource)
+
+	// Give a little time for the resource to be added back
+	time.Sleep(10 * time.Millisecond)
+
+	// Check resource pool size is back to original
+	if len(pooler.resources) != config.MinResources {
+		t.Errorf("Expected resources count to be %d after release, got %d",
+			config.MinResources, len(pooler.resources))
 	}
 }
