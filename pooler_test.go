@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 )
 
 // MockResource represents a simple resource for testing
@@ -245,5 +246,175 @@ func TestGetAndRelease(t *testing.T) {
 	if len(pooler.resources) != config.MinResources {
 		t.Errorf("Expected resources count to be %d after release, got %d",
 			config.MinResources, len(pooler.resources))
+	}
+}
+
+func TestAutoScaling(t *testing.T) {
+	rm := &MockResourceManager{}
+	config := PoolConfig[MockResource]{
+		ResourceManager:    rm,
+		MaxResources:       10,
+		MinResources:       4,
+		IdleTimeoutSeconds: 30,
+	}
+
+	pooler, err := NewPooler(config)
+	if err != nil {
+		t.Fatalf("Failed to create pooler: %v", err)
+	}
+
+	// Get enough resources to trigger scaling
+	var resources []MockResource
+	for range 3 {
+		resources = append(resources, pooler.Get())
+	}
+
+	// Wait for auto-scaling to happen
+	time.Sleep(100 * time.Millisecond)
+
+	// Check if more resources were created (autoscaling should have triggered)
+	if rm.GetCreateCount() <= config.MinResources {
+		t.Errorf("Expected more resources to be created due to auto-scaling, but got only %d",
+			rm.GetCreateCount())
+	}
+
+	// Release all resources
+	for _, r := range resources {
+		pooler.Release(r)
+	}
+}
+
+func TestConcurrentAccess(t *testing.T) {
+	rm := &MockResourceManager{}
+	config := PoolConfig[MockResource]{
+		ResourceManager:    rm,
+		MaxResources:       20,
+		MinResources:       5,
+		IdleTimeoutSeconds: 30,
+	}
+
+	pooler, err := NewPooler(config)
+	if err != nil {
+		t.Fatalf("Failed to create pooler: %v", err)
+	}
+
+	const numGoroutines = 15
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	for range numGoroutines {
+		go func() {
+			defer wg.Done()
+
+			resource := pooler.Get()
+			time.Sleep(20 * time.Millisecond) // Simulate work
+			pooler.Release(resource)
+		}()
+	}
+
+	wg.Wait()
+
+	// Give time for all releases to be processed
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify all resources were released back to the pool
+	expectedResources := min(config.MaxResources, rm.GetCreateCount())
+	if len(pooler.resources) != expectedResources {
+		t.Errorf("Expected %d resources in the pool after concurrent use, got %d",
+			expectedResources, len(pooler.resources))
+	}
+}
+
+func TestResourceExhaustion(t *testing.T) {
+	rm := &MockResourceManager{}
+	config := PoolConfig[MockResource]{
+		ResourceManager:    rm,
+		MaxResources:       3, // Small pool for testing resource exhaustion
+		MinResources:       2,
+		IdleTimeoutSeconds: 30,
+	}
+
+	pooler, err := NewPooler(config)
+	if err != nil {
+		t.Fatalf("Failed to create pooler: %v", err)
+	}
+
+	// Get all available resources without releasing
+	var resources []MockResource
+	for range config.MaxResources {
+		resources = append(resources, pooler.Get())
+	}
+
+	// Set up a channel to communicate when the blocked goroutine gets a resource
+	done := make(chan bool)
+	go func() {
+		// This should block until resource is released
+		_ = pooler.Get()
+		done <- true
+	}()
+
+	// Check that Get() is blocked
+	select {
+	case <-done:
+		t.Errorf("Expected Get() to block when resources exhausted, but it didn't")
+	case <-time.After(50 * time.Millisecond):
+		// This is expected - the call should block
+	}
+
+	// Release a resource
+	pooler.Release(resources[0])
+
+	// Now the blocked Get() should proceed
+	select {
+	case <-done:
+		// This is expected
+	case <-time.After(100 * time.Millisecond):
+		t.Errorf("Get() is still blocked after resource was released")
+	}
+
+	// Release remaining resources
+	for i := 1; i < len(resources); i++ {
+		pooler.Release(resources[i])
+	}
+}
+
+// This test verifies that we can't create more than MaxResources through auto-scaling
+func TestMaxResourcesLimit(t *testing.T) {
+	rm := &MockResourceManager{}
+	config := PoolConfig[MockResource]{
+		ResourceManager:    rm,
+		MaxResources:       5,
+		MinResources:       2,
+		IdleTimeoutSeconds: 30,
+	}
+
+	pooler, err := NewPooler(config)
+	if err != nil {
+		t.Fatalf("Failed to create pooler: %v", err)
+	}
+
+	// Get all resources to trigger scaling to max
+	var resources []MockResource
+	for range config.MaxResources {
+		resources = append(resources, pooler.Get())
+	}
+
+	// Wait for potential auto-scaling
+	time.Sleep(100 * time.Millisecond)
+
+	// Check that we didn't exceed MaxResources
+	if rm.GetCreateCount() > config.MaxResources {
+		t.Errorf("Created %d resources, exceeding MaxResources of %d",
+			rm.GetCreateCount(), config.MaxResources)
+	}
+
+	if pooler.currentManagedCount > config.MaxResources {
+		t.Errorf("Managing %d resources, exceeding MaxResources of %d",
+			pooler.currentManagedCount, config.MaxResources)
+	}
+
+	// Release all resources
+	for _, r := range resources {
+		pooler.Release(r)
 	}
 }
