@@ -17,6 +17,7 @@ type MockResourceManager struct {
 	createCounter  int
 	destroyCounter int
 	failCreate     bool
+	failValid      bool
 	mutex          sync.Mutex
 }
 
@@ -38,6 +39,10 @@ func (m *MockResourceManager) Destroy(r MockResource) error {
 
 	m.destroyCounter++
 	return nil
+}
+
+func (m *MockResourceManager) Valid(r MockResource) bool {
+	return !m.failValid
 }
 
 func (m *MockResourceManager) GetCreateCount() int {
@@ -240,13 +245,24 @@ func TestGetAndRelease(t *testing.T) {
 	}
 
 	// Release the resource
-	pooler.Release(resource)
+	if err := pooler.Release(resource); err != nil {
+		t.Errorf("Failed to release resource: %v", err)
+	}
 
 	// Check resource pool size is back to original
 	if len(pooler.resources) != config.MinResources {
 		t.Errorf("Expected resources count to be %d after release, got %d",
 			config.MinResources, len(pooler.resources))
 	}
+
+	// Test invalid resource release
+	rm.failValid = true
+	resourceInvalid := MockResource{ID: 999} // Invalid resource
+
+	if err := pooler.Release(resourceInvalid); err == nil {
+		t.Errorf("Expected error when releasing invalid resource, but got none")
+	}
+
 }
 
 func TestAutoScaling(t *testing.T) {
@@ -280,7 +296,9 @@ func TestAutoScaling(t *testing.T) {
 
 	// Release all resources
 	for _, r := range resources {
-		pooler.Release(r)
+		if err := pooler.Release(r); err != nil {
+			t.Errorf("Failed to release resource: %v", err)
+		}
 	}
 }
 
@@ -308,7 +326,9 @@ func TestConcurrentAccess(t *testing.T) {
 
 			resource := pooler.Get()
 			time.Sleep(20 * time.Millisecond) // Simulate work
-			pooler.Release(resource)
+			if err := pooler.Release(resource); err != nil {
+				t.Errorf("Failed to release resource: %v", err)
+			}
 		}()
 	}
 
@@ -362,7 +382,9 @@ func TestResourceExhaustion(t *testing.T) {
 	}
 
 	// Release a resource
-	pooler.Release(resources[0])
+	if err := pooler.Release(resources[0]); err != nil {
+		t.Errorf("Failed to release resource: %v", err)
+	}
 
 	// Now the blocked Get() should proceed
 	select {
@@ -374,7 +396,9 @@ func TestResourceExhaustion(t *testing.T) {
 
 	// Release remaining resources
 	for i := 1; i < len(resources); i++ {
-		pooler.Release(resources[i])
+		if err := pooler.Release(resources[i]); err != nil {
+			t.Errorf("Failed to release resource: %v", err)
+		}
 	}
 }
 
@@ -415,7 +439,9 @@ func TestMaxResourcesLimit(t *testing.T) {
 
 	// Release all resources
 	for _, r := range resources {
-		pooler.Release(r)
+		if err := pooler.Release(r); err != nil {
+			t.Errorf("Failed to release resource: %v", err)
+		}
 	}
 }
 
@@ -450,7 +476,9 @@ func TestIdleTimeout(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		for i := 0; i < 6; i++ {
-			pool.Release(resources[i])
+			if err := pool.Release(resources[i]); err != nil {
+				t.Errorf("Failed to release resource: %v", err)
+			}
 		}
 
 		// Verify we have more than MinResources resources now
@@ -559,7 +587,9 @@ func TestIdleTimeout(t *testing.T) {
 			resources[i] = pool.Get()
 		}
 		for i := 0; i < 6; i++ {
-			pool.Release(resources[i])
+			if err := pool.Release(resources[i]); err != nil {
+				t.Errorf("Failed to release resource: %v", err)
+			}
 		}
 
 		// Wait longer than usual idle timeout
@@ -603,7 +633,9 @@ func TestIdleTimeout(t *testing.T) {
 			resources[i] = pool.Get()
 		}
 		for i := 0; i < 4; i++ {
-			pool.Release(resources[i])
+			if err := pool.Release(resources[i]); err != nil {
+				t.Errorf("Failed to release resource: %v", err)
+			}
 		}
 
 		// Wait for first idle timeout
@@ -620,7 +652,9 @@ func TestIdleTimeout(t *testing.T) {
 			resources[i] = pool.Get()
 		}
 		for i := 0; i < 5; i++ {
-			pool.Release(resources[i])
+			if err := pool.Release(resources[i]); err != nil {
+				t.Errorf("Failed to release resource: %v", err)
+			}
 		}
 
 		// Verify we have more than MinResources
