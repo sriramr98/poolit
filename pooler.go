@@ -3,6 +3,7 @@ package poolit
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 // Pooler A thread-safe implementation of a resource pooling
@@ -34,6 +35,8 @@ func NewPooler[T any](config PoolConfig[T]) (*Pooler[T], error) {
 		return nil, err
 	}
 
+	p.startIdleTimer()
+
 	return &p, nil
 }
 
@@ -45,6 +48,8 @@ func (p *Pooler[T]) Get() T {
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	p.resetIdleTimer()
 
 	resource := p.resources[0]
 	p.resources = p.resources[1:]
@@ -75,6 +80,11 @@ func (p *Pooler[T]) createResources(count int) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	// This case is possible since `createResources` can be called from multiple goroutines concurrently
+	if p.currentManagedCount+count > p.config.MaxResources {
+		count = p.config.MaxResources - p.currentManagedCount
+	}
+
 	for range count {
 		resource, err := p.config.ResourceManager.Create()
 		if err != nil {
@@ -86,4 +96,47 @@ func (p *Pooler[T]) createResources(count int) error {
 	}
 
 	return nil
+}
+
+func (p *Pooler[T]) startIdleTimer() {
+	if p.config.IdleTimeout == 0 {
+		return
+	}
+
+	time.AfterFunc(p.config.IdleTimeout, func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
+		initialCount := len(p.resources)
+		if len(p.resources) > p.config.MinResources {
+
+			// Destroy the excess resources
+			for i := p.config.MinResources; i < initialCount; i++ {
+				if err := p.config.ResourceManager.Destroy(p.resources[i]); err != nil {
+					fmt.Println("Error destroying resource:", err)
+				}
+			}
+
+			// Trim the resources to the minimum
+			p.resources = p.resources[:p.config.MinResources]
+			p.currentManagedCount = p.config.MinResources
+
+			// Remove the excess resources from the semaphore
+			for i := 0; i < initialCount-p.config.MinResources; i++ {
+				<-p.sem
+			}
+		}
+
+		// Restart the timer
+		p.startIdleTimer()
+	})
+}
+
+func (p *Pooler[T]) resetIdleTimer() {
+	if p.config.IdleTimeout == 0 {
+		return
+	}
+
+	// Cancel the existing timer and start a new one
+	p.startIdleTimer()
 }

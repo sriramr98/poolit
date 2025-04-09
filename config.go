@@ -13,9 +13,9 @@ type ResourceManager[T any] interface {
 type PoolConfig[T any] struct {
 	ResourceManager ResourceManager[T]
 
-	MaxResources       int           //MaxResources that can be created for use
-	MinResources       int           //Min number of resources to be maintained at any point in time
-	IdleTimeoutSeconds time.Duration //Time (seconds, minutes, hours based on the duration value) the entire pool is idle before trimming the resources to the MinResources
+	MaxResources int           //MaxResources that can be created for use
+	MinResources int           //Min number of resources to be maintained at any point in time
+	IdleTimeout  time.Duration //Time (seconds, minutes, hours based on the duration value) the entire pool is idle before trimming the resources to the MinResources
 }
 
 // Validate checks if the configuration is valid

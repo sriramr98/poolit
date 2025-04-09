@@ -61,50 +61,50 @@ func TestPoolConfigValidation(t *testing.T) {
 		{
 			name: "Valid config",
 			config: PoolConfig[MockResource]{
-				ResourceManager:    &MockResourceManager{},
-				MaxResources:       10,
-				MinResources:       5,
-				IdleTimeoutSeconds: 30,
+				ResourceManager: &MockResourceManager{},
+				MaxResources:    10,
+				MinResources:    5,
+				IdleTimeout:     time.Second * 30,
 			},
 			expectedError: nil,
 		},
 		{
 			name: "Nil resource manager",
 			config: PoolConfig[MockResource]{
-				ResourceManager:    nil,
-				MaxResources:       10,
-				MinResources:       5,
-				IdleTimeoutSeconds: 30,
+				ResourceManager: nil,
+				MaxResources:    10,
+				MinResources:    5,
+				IdleTimeout:     time.Second * 30,
 			},
 			expectedError: ErrInvalidConfig,
 		},
 		{
 			name: "Zero max resources",
 			config: PoolConfig[MockResource]{
-				ResourceManager:    &MockResourceManager{},
-				MaxResources:       0,
-				MinResources:       5,
-				IdleTimeoutSeconds: 30,
+				ResourceManager: &MockResourceManager{},
+				MaxResources:    0,
+				MinResources:    5,
+				IdleTimeout:     time.Second * 30,
 			},
 			expectedError: ErrInvalidConfig,
 		},
 		{
 			name: "Negative min resources",
 			config: PoolConfig[MockResource]{
-				ResourceManager:    &MockResourceManager{},
-				MaxResources:       10,
-				MinResources:       -1,
-				IdleTimeoutSeconds: 30,
+				ResourceManager: &MockResourceManager{},
+				MaxResources:    10,
+				MinResources:    -1,
+				IdleTimeout:     time.Second * 30,
 			},
 			expectedError: ErrInvalidConfig,
 		},
 		{
 			name: "Min resources exceed max resources",
 			config: PoolConfig[MockResource]{
-				ResourceManager:    &MockResourceManager{},
-				MaxResources:       10,
-				MinResources:       15,
-				IdleTimeoutSeconds: 30,
+				ResourceManager: &MockResourceManager{},
+				MaxResources:    10,
+				MinResources:    15,
+				IdleTimeout:     time.Second * 30,
 			},
 			expectedError: ErrInvalidConfig,
 		},
@@ -134,10 +134,10 @@ func TestNewPooler(t *testing.T) {
 		{
 			name: "Valid creation",
 			config: PoolConfig[MockResource]{
-				ResourceManager:    &MockResourceManager{},
-				MaxResources:       10,
-				MinResources:       5,
-				IdleTimeoutSeconds: 30,
+				ResourceManager: &MockResourceManager{},
+				MaxResources:    10,
+				MinResources:    5,
+				IdleTimeout:     time.Second * 30,
 			},
 			failCreate:     false,
 			expectedError:  false,
@@ -146,10 +146,10 @@ func TestNewPooler(t *testing.T) {
 		{
 			name: "Zero minimum resources",
 			config: PoolConfig[MockResource]{
-				ResourceManager:    &MockResourceManager{},
-				MaxResources:       10,
-				MinResources:       0,
-				IdleTimeoutSeconds: 30,
+				ResourceManager: &MockResourceManager{},
+				MaxResources:    10,
+				MinResources:    0,
+				IdleTimeout:     time.Second * 30,
 			},
 			failCreate:     false,
 			expectedError:  false,
@@ -158,10 +158,10 @@ func TestNewPooler(t *testing.T) {
 		{
 			name: "Resource creation failure",
 			config: PoolConfig[MockResource]{
-				ResourceManager:    &MockResourceManager{failCreate: true},
-				MaxResources:       10,
-				MinResources:       5,
-				IdleTimeoutSeconds: 30,
+				ResourceManager: &MockResourceManager{failCreate: true},
+				MaxResources:    10,
+				MinResources:    5,
+				IdleTimeout:     time.Second * 30,
 			},
 			failCreate:    true,
 			expectedError: true,
@@ -211,10 +211,10 @@ func TestNewPooler(t *testing.T) {
 func TestGetAndRelease(t *testing.T) {
 	rm := &MockResourceManager{}
 	config := PoolConfig[MockResource]{
-		ResourceManager:    rm,
-		MaxResources:       10,
-		MinResources:       5,
-		IdleTimeoutSeconds: 30,
+		ResourceManager: rm,
+		MaxResources:    10,
+		MinResources:    5,
+		IdleTimeout:     time.Second * 30,
 	}
 
 	pooler, err := NewPooler(config)
@@ -252,10 +252,10 @@ func TestGetAndRelease(t *testing.T) {
 func TestAutoScaling(t *testing.T) {
 	rm := &MockResourceManager{}
 	config := PoolConfig[MockResource]{
-		ResourceManager:    rm,
-		MaxResources:       10,
-		MinResources:       4,
-		IdleTimeoutSeconds: 30,
+		ResourceManager: rm,
+		MaxResources:    10,
+		MinResources:    4,
+		IdleTimeout:     time.Second * 30,
 	}
 
 	pooler, err := NewPooler(config)
@@ -287,10 +287,10 @@ func TestAutoScaling(t *testing.T) {
 func TestConcurrentAccess(t *testing.T) {
 	rm := &MockResourceManager{}
 	config := PoolConfig[MockResource]{
-		ResourceManager:    rm,
-		MaxResources:       20,
-		MinResources:       5,
-		IdleTimeoutSeconds: 30,
+		ResourceManager: rm,
+		MaxResources:    20,
+		MinResources:    5,
+		IdleTimeout:     time.Second * 30,
 	}
 
 	pooler, err := NewPooler(config)
@@ -328,10 +328,10 @@ func TestConcurrentAccess(t *testing.T) {
 func TestResourceExhaustion(t *testing.T) {
 	rm := &MockResourceManager{}
 	config := PoolConfig[MockResource]{
-		ResourceManager:    rm,
-		MaxResources:       3, // Small pool for testing resource exhaustion
-		MinResources:       2,
-		IdleTimeoutSeconds: 30,
+		ResourceManager: rm,
+		MaxResources:    3, // Small pool for testing resource exhaustion
+		MinResources:    2,
+		IdleTimeout:     time.Second * 30,
 	}
 
 	pooler, err := NewPooler(config)
@@ -382,10 +382,10 @@ func TestResourceExhaustion(t *testing.T) {
 func TestMaxResourcesLimit(t *testing.T) {
 	rm := &MockResourceManager{}
 	config := PoolConfig[MockResource]{
-		ResourceManager:    rm,
-		MaxResources:       5,
-		MinResources:       2,
-		IdleTimeoutSeconds: 30,
+		ResourceManager: rm,
+		MaxResources:    5,
+		MinResources:    2,
+		IdleTimeout:     time.Second * 30,
 	}
 
 	pooler, err := NewPooler(config)
@@ -417,4 +417,224 @@ func TestMaxResourcesLimit(t *testing.T) {
 	for _, r := range resources {
 		pooler.Release(r)
 	}
+}
+
+func TestIdleTimeout(t *testing.T) {
+	t.Run("IdleTimeout should reduce resources to MinResources", func(t *testing.T) {
+		// Setup
+		mockManager := &MockResourceManager{}
+		config := PoolConfig[MockResource]{
+			ResourceManager: mockManager,
+			MinResources:    2,
+			MaxResources:    6,
+			IdleTimeout:     50 * time.Millisecond, // Short timeout for testing
+		}
+
+		pool, err := NewPooler(config)
+		if err != nil {
+			t.Fatalf("Failed to create pool: %v", err)
+		}
+
+		// Initially pool should have MinResources = 2
+		if len(pool.resources) != 2 {
+			t.Errorf("Expected initial resources count to be %d, got %d", 2, len(pool.resources))
+		}
+
+		// Create additional resources by getting and releasing resources
+		resources := make([]MockResource, 6)
+		for i := 0; i < 6; i++ {
+			resources[i] = pool.Get()
+		}
+
+		// Wait for a moment to simulate some work
+		time.Sleep(100 * time.Millisecond)
+
+		for i := 0; i < 6; i++ {
+			pool.Release(resources[i])
+		}
+
+		// Verify we have more than MinResources resources now
+		if len(pool.resources) <= config.MinResources {
+			t.Fatalf("Expected resources to be more than MinResources after releasing, got %d", len(pool.resources))
+		}
+
+		// Wait for IdleTimeout to trigger
+		time.Sleep(200 * time.Millisecond)
+
+		// Verify resources are trimmed down to MinResources
+		if len(pool.resources) != config.MinResources {
+			t.Errorf("Expected resources to be reduced to MinResources (%d) after idle timeout, got %d",
+				config.MinResources, len(pool.resources))
+		}
+
+		// Verify currentManagedCount is updated correctly
+		if pool.currentManagedCount != config.MinResources {
+			t.Errorf("Expected currentManagedCount to be %d after idle timeout, got %d",
+				config.MinResources, pool.currentManagedCount)
+		}
+
+		// Verify destroy count
+		if mockManager.GetDestroyCount() != 4 {
+			t.Errorf("Expected 4 resources to be destroyed, got %d", mockManager.GetDestroyCount())
+		}
+
+		// Verify semaphore capacity is properly adjusted
+		resourceCount := 0
+		timeout := time.After(50 * time.Millisecond)
+	countLoop:
+		for {
+			select {
+			case <-pool.sem:
+				resourceCount++
+			case <-timeout:
+				break countLoop
+			}
+		}
+
+		// We expect to get exactly MinResources from the semaphore
+		if resourceCount != config.MinResources {
+			t.Errorf("Expected semaphore to have %d available resources after idle timeout, got %d",
+				config.MinResources, resourceCount)
+		}
+	})
+
+	t.Run("IdleTimeout should not reduce resources when at MinResources", func(t *testing.T) {
+		// Setup
+		mockManager := &MockResourceManager{}
+		config := PoolConfig[MockResource]{
+			ResourceManager: mockManager,
+			MinResources:    3,
+			MaxResources:    10,
+			IdleTimeout:     50 * time.Millisecond,
+		}
+
+		pool, err := NewPooler(config)
+		if err != nil {
+			t.Fatalf("Failed to create pool: %v", err)
+		}
+
+		initialResourceCount := len(pool.resources)
+		if initialResourceCount != config.MinResources {
+			t.Fatalf("Expected initial resources to be %d, got %d", config.MinResources, initialResourceCount)
+		}
+
+		// Wait for IdleTimeout to trigger
+		time.Sleep(100 * time.Millisecond)
+
+		// Verify resources stay at MinResources
+		if len(pool.resources) != config.MinResources {
+			t.Errorf("Expected resources to remain at MinResources (%d) after idle timeout, got %d",
+				config.MinResources, len(pool.resources))
+		}
+
+		// Verify currentManagedCount remains the same
+		if pool.currentManagedCount != config.MinResources {
+			t.Errorf("Expected currentManagedCount to remain %d after idle timeout, got %d",
+				config.MinResources, pool.currentManagedCount)
+		}
+
+		// Verify no resources were destroyed
+		if mockManager.GetDestroyCount() != 0 {
+			t.Errorf("Expected no resources to be destroyed, got %d", mockManager.GetDestroyCount())
+		}
+	})
+
+	t.Run("IdleTimeout should not trigger when not set", func(t *testing.T) {
+		// Setup
+		mockManager := &MockResourceManager{}
+		config := PoolConfig[MockResource]{
+			ResourceManager: mockManager,
+			MinResources:    2,
+			MaxResources:    10,
+		}
+
+		pool, err := NewPooler(config)
+		if err != nil {
+			t.Fatalf("Failed to create pool: %v", err)
+		}
+
+		// Create additional resources
+		resources := make([]MockResource, 6)
+		for i := 0; i < 6; i++ {
+			resources[i] = pool.Get()
+		}
+		for i := 0; i < 6; i++ {
+			pool.Release(resources[i])
+		}
+
+		// Wait longer than usual idle timeout
+		time.Sleep(100 * time.Millisecond)
+
+		// Verify that autoscale got triggered and extra resources are created
+		if mockManager.GetCreateCount() <= config.MinResources {
+			t.Fatalf("Expected more than MinResources to be created, got %d",
+				mockManager.GetCreateCount())
+		}
+
+		if len(pool.resources) <= config.MinResources {
+			t.Fatalf("Expected resources to be more than MinResources after releasing, got %d",
+				len(pool.resources))
+		}
+
+		// Verify that extra resources have not been destroyed
+		if mockManager.GetDestroyCount() != 0 {
+			t.Errorf("Expected no resources to be destroyed, got %d", mockManager.GetDestroyCount())
+		}
+	})
+
+	t.Run("IdleTimeout should continuously trigger and maintain MinResources", func(t *testing.T) {
+		// Setup
+		mockManager := &MockResourceManager{}
+		config := PoolConfig[MockResource]{
+			ResourceManager: mockManager,
+			MinResources:    2,
+			MaxResources:    8,
+			IdleTimeout:     50 * time.Millisecond,
+		}
+
+		pool, err := NewPooler(config)
+		if err != nil {
+			t.Fatalf("Failed to create pool: %v", err)
+		}
+
+		// First cycle: Create excess resources and let them time out
+		resources := make([]MockResource, 4)
+		for i := 0; i < 4; i++ {
+			resources[i] = pool.Get()
+		}
+		for i := 0; i < 4; i++ {
+			pool.Release(resources[i])
+		}
+
+		// Wait for first idle timeout
+		time.Sleep(100 * time.Millisecond)
+
+		if len(pool.resources) != config.MinResources {
+			t.Errorf("Expected resources to be reduced to %d after first timeout, got %d",
+				config.MinResources, len(pool.resources))
+		}
+
+		// Second cycle: Create excess resources again and let them time out
+		resources = make([]MockResource, 5)
+		for i := 0; i < 5; i++ {
+			resources[i] = pool.Get()
+		}
+		for i := 0; i < 5; i++ {
+			pool.Release(resources[i])
+		}
+
+		// Verify we have more than MinResources
+		if len(pool.resources) <= config.MinResources {
+			t.Fatalf("Expected resources to be more than MinResources after second cycle, got %d", len(pool.resources))
+		}
+
+		// Wait for second idle timeout
+		time.Sleep(100 * time.Millisecond)
+
+		// Verify resources are trimmed down to MinResources again
+		if len(pool.resources) != config.MinResources {
+			t.Errorf("Expected resources to be reduced to %d after second timeout, got %d",
+				config.MinResources, len(pool.resources))
+		}
+	})
 }
