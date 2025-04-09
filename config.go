@@ -8,6 +8,7 @@ import (
 type ResourceManager[T any] interface {
 	Create() (T, error)
 	Destroy(T) error
+	Valid(T) bool
 }
 
 type PoolConfig[T any] struct {

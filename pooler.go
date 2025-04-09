@@ -72,11 +72,16 @@ func (p *Pooler[T]) Get() T {
 }
 
 // Release Adds a resource back to the pool once used
-func (p *Pooler[T]) Release(resource T) {
+func (p *Pooler[T]) Release(resource T) error {
+	if !p.config.ResourceManager.Valid(resource) {
+		return ErrInvalidResource
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.resources = append(p.resources, resource)
 	p.sem <- struct{}{} // add an empty struct back to the channel so that a blocked thread can read it and get resource
+
+	return nil
 }
 
 func (p *Pooler[T]) createResources(count int) error {
