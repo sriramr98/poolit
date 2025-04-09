@@ -1,6 +1,7 @@
 package poolit
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -45,9 +46,18 @@ func NewPooler[T any](config PoolConfig[T]) (*Pooler[T], error) {
 
 // Get fetches an available resource from the pool. If no resources are available, it will block until available
 // As soon as currentManagedCount/2 resources get used, creates min(MaxResources-currentManagedCount, currentManagedCount/2) new resources
-func (p *Pooler[T]) Get() T {
+func (p *Pooler[T]) Get(ctx context.Context) (T, error) {
+
+	var empty T
+
+	// Either context times out and returns Timeout or we get a resource
+	select {
+	case <-ctx.Done():
+		return empty, ErrTimedOut
 	// If resources are available in our pool, this unblocks immediately, else waits for someone else to release their resource
-	<-p.sem
+	case <-p.sem:
+
+	}
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -68,7 +78,7 @@ func (p *Pooler[T]) Get() T {
 		}()
 	}
 
-	return resource
+	return resource, nil
 }
 
 // Release Adds a resource back to the pool once used

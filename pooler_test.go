@@ -1,6 +1,7 @@
 package poolit
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -230,7 +231,10 @@ func TestGetAndRelease(t *testing.T) {
 	initialCount := rm.GetCreateCount()
 
 	// Get a resource
-	resource := pooler.Get()
+	resource, err := pooler.Get(context.TODO())
+	if err != nil {
+		t.Fatalf("Failed to get resource: %v", err)
+	}
 
 	// Check no new resources were created for a single Get
 	if rm.GetCreateCount() != initialCount {
@@ -265,6 +269,42 @@ func TestGetAndRelease(t *testing.T) {
 
 }
 
+func TestGetWithTimeoutFailure(t *testing.T) {
+	rm := &MockResourceManager{}
+	config := PoolConfig[MockResource]{
+		ResourceManager: rm,
+		MaxResources:    5,
+		MinResources:    5,
+		IdleTimeout:     time.Second * 30,
+	}
+
+	pooler, err := NewPooler(config)
+	if err != nil {
+		t.Fatalf("Failed to create pooler: %v", err)
+	}
+
+	// Get all resources to exhaust the pool
+	for i := 0; i < config.MaxResources; i++ {
+		_, err := pooler.Get(context.TODO())
+		if err != nil {
+			t.Fatalf("Failed to get resource: %v", err)
+		}
+	}
+
+	// Set a short timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	resource, err := pooler.Get(ctx)
+	if err == nil {
+		t.Errorf("Expected timeout error, but got resource: %v", resource)
+	}
+
+	if !errors.Is(err, ErrTimedOut) {
+		t.Errorf("Expected context deadline exceeded error, but got: %v", err)
+	}
+}
+
 func TestAutoScaling(t *testing.T) {
 	rm := &MockResourceManager{}
 	config := PoolConfig[MockResource]{
@@ -282,7 +322,11 @@ func TestAutoScaling(t *testing.T) {
 	// Get enough resources to trigger scaling
 	var resources []MockResource
 	for range 3 {
-		resources = append(resources, pooler.Get())
+		res, err := pooler.Get(context.TODO())
+		if err != nil {
+			t.Fatalf("Failed to get resource: %v", err)
+		}
+		resources = append(resources, res)
 	}
 
 	// Wait for auto-scaling to happen
@@ -324,7 +368,11 @@ func TestConcurrentAccess(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			resource := pooler.Get()
+			resource, err := pooler.Get(context.TODO())
+			if err != nil {
+				t.Errorf("Failed to get resource: %v", err)
+				return
+			}
 			time.Sleep(20 * time.Millisecond) // Simulate work
 			if err := pooler.Release(resource); err != nil {
 				t.Errorf("Failed to release resource: %v", err)
@@ -362,15 +410,23 @@ func TestResourceExhaustion(t *testing.T) {
 	// Get all available resources without releasing
 	var resources []MockResource
 	for range config.MaxResources {
-		resources = append(resources, pooler.Get())
+		resource, err := pooler.Get(context.TODO())
+		if err != nil {
+			t.Fatalf("Failed to get resource: %v", err)
+		}
+		resources = append(resources, resource)
 	}
 
 	// Set up a channel to communicate when the blocked goroutine gets a resource
 	done := make(chan bool)
 	go func() {
 		// This should block until resource is released
-		_ = pooler.Get()
-		done <- true
+		_, err = pooler.Get(context.TODO())
+		if err != nil {
+			t.Errorf("Failed to get resource after blocking: %v", err)
+		} else {
+			done <- true
+		}
 	}()
 
 	// Check that Get() is blocked
@@ -420,7 +476,11 @@ func TestMaxResourcesLimit(t *testing.T) {
 	// Get all resources to trigger scaling to max
 	var resources []MockResource
 	for range config.MaxResources {
-		resources = append(resources, pooler.Get())
+		resource, err := pooler.Get(context.TODO())
+		if err != nil {
+			t.Fatalf("Failed to get resource: %v", err)
+		}
+		resources = append(resources, resource)
 	}
 
 	// Wait for potential auto-scaling
@@ -469,7 +529,11 @@ func TestIdleTimeout(t *testing.T) {
 		// Create additional resources by getting and releasing resources
 		resources := make([]MockResource, 6)
 		for i := 0; i < 6; i++ {
-			resources[i] = pool.Get()
+			resource, err := pool.Get(context.TODO())
+			if err != nil {
+				t.Fatalf("Failed to get resource: %v", err)
+			}
+			resources[i] = resource
 		}
 
 		// Wait for a moment to simulate some work
@@ -584,7 +648,11 @@ func TestIdleTimeout(t *testing.T) {
 		// Create additional resources
 		resources := make([]MockResource, 6)
 		for i := 0; i < 6; i++ {
-			resources[i] = pool.Get()
+			resource, err := pool.Get(context.TODO())
+			if err != nil {
+				t.Fatalf("Failed to get resource: %v", err)
+			}
+			resources[i] = resource
 		}
 		for i := 0; i < 6; i++ {
 			if err := pool.Release(resources[i]); err != nil {
@@ -630,7 +698,11 @@ func TestIdleTimeout(t *testing.T) {
 		// First cycle: Create excess resources and let them time out
 		resources := make([]MockResource, 4)
 		for i := 0; i < 4; i++ {
-			resources[i] = pool.Get()
+			resource, err := pool.Get(context.TODO())
+			if err != nil {
+				t.Fatalf("Failed to get resource: %v", err)
+			}
+			resources[i] = resource
 		}
 		for i := 0; i < 4; i++ {
 			if err := pool.Release(resources[i]); err != nil {
@@ -649,7 +721,11 @@ func TestIdleTimeout(t *testing.T) {
 		// Second cycle: Create excess resources again and let them time out
 		resources = make([]MockResource, 5)
 		for i := 0; i < 5; i++ {
-			resources[i] = pool.Get()
+			resource, err := pool.Get(context.TODO())
+			if err != nil {
+				t.Fatalf("Failed to get resource: %v", err)
+			}
+			resources[i] = resource
 		}
 		for i := 0; i < 5; i++ {
 			if err := pool.Release(resources[i]); err != nil {
