@@ -637,4 +637,63 @@ func TestIdleTimeout(t *testing.T) {
 				config.MinResources, len(pool.resources))
 		}
 	})
+
+	t.Run("IdleTimeout should not trigger as long as GET is being called within IdleTimeout", func(t *testing.T) {
+		mockManager := &MockResourceManager{}
+		config := PoolConfig[MockResource]{
+			ResourceManager: mockManager,
+			MinResources:    2,
+			MaxResources:    10,
+			IdleTimeout:     100 * time.Millisecond,
+		}
+
+		pool, err := NewPooler(config)
+		if err != nil {
+			t.Fatalf("Failed to create pool: %v", err)
+		}
+
+		// Create resources
+		resources := make([]MockResource, 4)
+		for range 4 {
+			resources = append(resources, pool.Get())
+		}
+		// Wait for a moment to simulate some work
+		time.Sleep(50 * time.Millisecond)
+
+		// Expect DestroyCount to be 0
+		if mockManager.GetDestroyCount() != 0 {
+			t.Errorf("Expected no resources to be destroyed, got %d", mockManager.GetDestroyCount())
+		}
+
+		// Expect autoscaler to have created more resources
+		if pool.currentManagedCount <= config.MinResources {
+			t.Fatalf("Expected more than MinResources to be created, got %d",
+				pool.currentManagedCount)
+		}
+
+		if mockManager.GetCreateCount() < config.MinResources {
+			t.Fatalf("Expected more than MinResources to be created, got %d",
+				mockManager.GetCreateCount())
+		}
+
+		time.Sleep(40 * time.Millisecond)
+		// Create one more resource
+		resources = append(resources, pool.Get())
+
+		// Wait for 20ms to reach 100ms from the starting of the test to check if idle timeout had triggered or not
+		time.Sleep(20 * time.Millisecond)
+
+		// Verify that the idle timeout has not triggered by checking destroy count
+		if mockManager.GetDestroyCount() != 0 {
+			t.Errorf("Expected no resources to be destroyed, got %d", mockManager.GetDestroyCount())
+		}
+
+		// Wait 100ms for IdleTimeout to be triggered
+		time.Sleep(100 * time.Millisecond)
+		// Verify that the idle timeout has triggered by checking destroy count
+		if mockManager.GetDestroyCount() == 0 {
+			t.Errorf("Expected resources to be destroyed, got %d", mockManager.GetDestroyCount())
+		}
+	})
+
 }

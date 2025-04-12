@@ -13,6 +13,8 @@ type Pooler[T any] struct {
 	currentManagedCount int           //Total number of resources being managed by the pool
 	sem                 chan struct{} //Semaphore implementation used to make sure that only config.MaxResources resources can be queried at any point in time. Blocks if all resources are used
 	mu                  *sync.Mutex
+	idleTicker          *time.Ticker
+	closeCh             chan struct{} // Channel to signal goroutines to stop
 }
 
 // NewPooler Create a new instance of resource pooler with resources equal to config.MinResources. Returns an error if it's unable to create a resource
@@ -29,6 +31,7 @@ func NewPooler[T any](config PoolConfig[T]) (*Pooler[T], error) {
 		config:    config,
 		sem:       make(chan struct{}, config.MaxResources),
 		mu:        &sync.Mutex{},
+		closeCh:   make(chan struct{}),
 	}
 
 	if err := p.createResources(config.MinResources); err != nil {
@@ -103,33 +106,50 @@ func (p *Pooler[T]) startIdleTimer() {
 		return
 	}
 
-	time.AfterFunc(p.config.IdleTimeout, func() {
-		p.mu.Lock()
-		defer p.mu.Unlock()
+	// Cancel the existing timer if it exists
+	if p.idleTicker != nil {
+		p.idleTicker.Stop()
+	}
 
-		initialCount := len(p.resources)
-		if len(p.resources) > p.config.MinResources {
+	// Start a new timer
+	p.idleTicker = time.NewTicker(p.config.IdleTimeout)
 
-			// Destroy the excess resources
-			for i := p.config.MinResources; i < initialCount; i++ {
-				if err := p.config.ResourceManager.Destroy(p.resources[i]); err != nil {
-					fmt.Println("Error destroying resource:", err)
-				}
+	go func(p *Pooler[T]) {
+		for {
+			select {
+			case <-p.idleTicker.C:
+				p.trimIdleResources()
+			case <-p.closeCh:
+				p.idleTicker.Stop()
 			}
+		}
+	}(p)
 
-			// Trim the resources to the minimum
-			p.resources = p.resources[:p.config.MinResources]
-			p.currentManagedCount = p.config.MinResources
+}
 
-			// Remove the excess resources from the semaphore
-			for i := 0; i < initialCount-p.config.MinResources; i++ {
-				<-p.sem
+func (p *Pooler[T]) trimIdleResources() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	initialCount := len(p.resources)
+	if len(p.resources) > p.config.MinResources {
+
+		// Destroy the excess resources
+		for i := p.config.MinResources; i < initialCount; i++ {
+			if err := p.config.ResourceManager.Destroy(p.resources[i]); err != nil {
+				fmt.Println("Error destroying resource:", err)
 			}
 		}
 
-		// Restart the timer
-		p.startIdleTimer()
-	})
+		// Trim the resources to the minimum
+		p.resources = p.resources[:p.config.MinResources]
+		p.currentManagedCount = p.config.MinResources
+
+		// Remove the excess resources from the semaphore
+		for i := 0; i < initialCount-p.config.MinResources; i++ {
+			<-p.sem
+		}
+	}
 }
 
 func (p *Pooler[T]) resetIdleTimer() {
@@ -137,6 +157,7 @@ func (p *Pooler[T]) resetIdleTimer() {
 		return
 	}
 
-	// Cancel the existing timer and start a new one
-	p.startIdleTimer()
+	if p.idleTicker != nil {
+		p.idleTicker.Reset(p.config.IdleTimeout)
+	}
 }
