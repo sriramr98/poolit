@@ -1,4 +1,4 @@
-# poolit
+****# poolit
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/sriramr98/poolit.svg)](https://pkg.go.dev/github.com/sriramr98/poolit)
 [![Go Report Card](https://goreportcard.com/badge/github.com/sriramr98/poolit)](https://goreportcard.com/report/github.com/sriramr98/poolit)
@@ -169,10 +169,12 @@ Monitor pool performance using the `Stats()` method:
 
 ```go
 stats := pool.Stats()
-fmt.Printf("Available: %d, In use: %d, Total: %d\n", 
-    stats["available_resources"].(int),
-    stats["in_use_resources"].(int),
-    stats["current_managed_count"].(int))
+fmt.Printf(
+    "Available: %d, In use: %d, Total: %d\n", 
+    stats.TotalAvailable,
+    stats.TotalInUse,
+    stats.TotalCreated
+)
 ```
 
 ## Contributing
