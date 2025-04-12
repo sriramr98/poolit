@@ -765,7 +765,11 @@ func TestIdleTimeout(t *testing.T) {
 		// Create resources
 		resources := make([]MockResource, 4)
 		for range 4 {
-			resources = append(resources, pool.Get())
+			resource, err := pool.Get(context.TODO())
+			if err != nil {
+				t.Fatalf("Failed to get resource: %v", err)
+			}
+			resources = append(resources, resource)
 		}
 		// Wait for a moment to simulate some work
 		time.Sleep(50 * time.Millisecond)
@@ -788,7 +792,11 @@ func TestIdleTimeout(t *testing.T) {
 
 		time.Sleep(40 * time.Millisecond)
 		// Create one more resource
-		resources = append(resources, pool.Get())
+		resource, err := pool.Get(context.TODO())
+		if err != nil {
+			t.Fatalf("Failed to get resource: %v", err)
+		}
+		resources = append(resources, resource)
 
 		// Wait for 20ms to reach 100ms from the starting of the test to check if idle timeout had triggered or not
 		time.Sleep(20 * time.Millisecond)
