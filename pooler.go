@@ -7,6 +7,13 @@ import (
 	"time"
 )
 
+type PoolStats struct {
+	TotalManaged   int // Total number of resources being managed by the pool
+	TotalAvailable int // Total number of resources available in the pool
+	TotalInUse     int // Total number of resources in use
+	IsClosed       bool
+}
+
 // Pooler A thread-safe implementation of a resource pooling
 type Pooler[T any] struct {
 	resources           []T // List of free resources being managed by the pool
@@ -141,6 +148,18 @@ func (p *Pooler[T]) Close() error {
 	p.closeCh <- struct{}{} // Signal that the pool has been closed
 
 	return nil
+}
+
+func (p *Pooler[T]) Stats() PoolStats {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return PoolStats{
+		TotalManaged:   p.currentManagedCount,
+		TotalAvailable: len(p.resources),
+		TotalInUse:     p.currentManagedCount - len(p.resources),
+		IsClosed:       p.closed,
+	}
 }
 
 func (p *Pooler[T]) createResources(count int) error {
