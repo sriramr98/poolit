@@ -16,6 +16,7 @@ type Pooler[T any] struct {
 	mu                  *sync.Mutex
 	idleTicker          *time.Ticker
 	closeCh             chan struct{} // Channel to signal goroutines to stop
+	closed              bool          // Flag to indicate if the pooler is closed
 }
 
 // NewPooler Create a new instance of resource pooler with resources equal to config.MinResources. Returns an error if it's unable to create a resource
@@ -33,6 +34,7 @@ func NewPooler[T any](config PoolConfig[T]) (*Pooler[T], error) {
 		sem:       make(chan struct{}, config.MaxResources),
 		mu:        &sync.Mutex{},
 		closeCh:   make(chan struct{}),
+		closed:    false,
 	}
 
 	if err := p.createResources(config.MinResources); err != nil {
@@ -49,6 +51,12 @@ func NewPooler[T any](config PoolConfig[T]) (*Pooler[T], error) {
 func (p *Pooler[T]) Get(ctx context.Context) (T, error) {
 
 	var empty T
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return empty, ErrPoolClosed
+	}
+	p.mu.Unlock()
 
 	// Either context times out and returns Timeout or we get a resource
 	select {
@@ -56,7 +64,11 @@ func (p *Pooler[T]) Get(ctx context.Context) (T, error) {
 		return empty, ErrTimedOut
 	// If resources are available in our pool, this unblocks immediately, else waits for someone else to release their resource
 	case <-p.sem:
-
+	case _, ok := <-p.closeCh:
+		// If channel is closed when waiting for a resource
+		if !ok {
+			return empty, ErrPoolClosed
+		}
 	}
 
 	p.mu.Lock()
@@ -86,10 +98,47 @@ func (p *Pooler[T]) Release(resource T) error {
 	if !p.config.ResourceManager.Valid(resource) {
 		return ErrInvalidResource
 	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	if p.closed {
+		if err := p.config.ResourceManager.Destroy(resource); err != nil {
+			// Not returning an error since the pool is closed already
+			fmt.Println("Error destroying resource:", err)
+		}
+		p.sem <- struct{}{} // Add an empty struct back to the channel so that a blocked thread can read it and get resource
+		return ErrPoolClosed
+	}
+
 	p.resources = append(p.resources, resource)
 	p.sem <- struct{}{} // add an empty struct back to the channel so that a blocked thread can read it and get resource
+
+	return nil
+}
+
+func (p *Pooler[T]) Close() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.closed {
+		return ErrPoolClosed
+	}
+
+	// All resources should be released before attempting to close the pool
+	if len(p.resources) != p.currentManagedCount {
+		return ErrResourcesActive
+	}
+
+	for _, resource := range p.resources {
+		if err := p.config.ResourceManager.Destroy(resource); err != nil {
+			return ErrDestroyFailed
+		}
+		<-p.sem // Remove the resource from the semaphore
+	}
+
+	p.closed = true
+	p.closeCh <- struct{}{} // Signal that the pool has been closed
 
 	return nil
 }
@@ -97,6 +146,11 @@ func (p *Pooler[T]) Release(resource T) error {
 func (p *Pooler[T]) createResources(count int) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	// Pool might be closed while waiting for the lock since this runs in a separate goroutine
+	if p.closed {
+		return ErrPoolClosed
+	}
 
 	// This case is possible since `createResources` can be called from multiple goroutines concurrently
 	if p.currentManagedCount+count > p.config.MaxResources {

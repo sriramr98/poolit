@@ -19,6 +19,7 @@ type MockResourceManager struct {
 	destroyCounter int
 	failCreate     bool
 	failValid      bool
+	failDestroy    bool
 	mutex          sync.Mutex
 }
 
@@ -37,6 +38,10 @@ func (m *MockResourceManager) Create() (MockResource, error) {
 func (m *MockResourceManager) Destroy(r MockResource) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
+
+	if m.failDestroy {
+		return errors.New("failed to destroy resource")
+	}
 
 	m.destroyCounter++
 	return nil
@@ -148,6 +153,18 @@ func TestNewPooler(t *testing.T) {
 			failCreate:     false,
 			expectedError:  false,
 			expectedMinRes: 5,
+		},
+		{
+			name: "New Pooler creation should fail if config is invalid",
+			config: PoolConfig[MockResource]{
+				ResourceManager: nil,
+				MaxResources:    10,
+				MinResources:    15,
+				IdleTimeout:     time.Second * 30,
+			},
+			failCreate:     false,
+			expectedError:  true,
+			expectedMinRes: 0,
 		},
 		{
 			name: "Zero minimum resources",
@@ -302,6 +319,65 @@ func TestGetWithTimeoutFailure(t *testing.T) {
 
 	if !errors.Is(err, ErrTimedOut) {
 		t.Errorf("Expected context deadline exceeded error, but got: %v", err)
+	}
+}
+
+func TestGetWithClosedPool(t *testing.T) {
+	rm := &MockResourceManager{}
+	config := PoolConfig[MockResource]{
+		ResourceManager: rm,
+		MaxResources:    5,
+		MinResources:    2,
+		IdleTimeout:     time.Second * 30,
+	}
+
+	pooler, err := NewPooler(config)
+	if err != nil {
+		t.Fatalf("Failed to create pooler: %v", err)
+	}
+
+	// Close the pool
+	if err := pooler.Close(); err != nil {
+		t.Fatalf("Failed to close pool: %v", err)
+	}
+
+	resource, err := pooler.Get(context.TODO())
+	if err == nil {
+		t.Errorf("Expected error when getting resource from closed pool, but got resource: %v", resource)
+	}
+
+	if !errors.Is(err, ErrPoolClosed) {
+		t.Errorf("Expected pool closed error, but got: %v", err)
+	}
+}
+
+func TestReleaseAfterPoolClosed(t *testing.T) {
+	rm := &MockResourceManager{}
+	config := PoolConfig[MockResource]{
+		ResourceManager: rm,
+		MaxResources:    5,
+		MinResources:    2,
+		IdleTimeout:     time.Second * 30,
+	}
+
+	pooler, err := NewPooler(config)
+	if err != nil {
+		t.Fatalf("Failed to create pooler: %v", err)
+	}
+
+	// Close the pool
+	if err := pooler.Close(); err != nil {
+		t.Fatalf("Failed to close pool: %v", err)
+	}
+
+	resource := MockResource{ID: 1}
+	err = pooler.Release(resource)
+	if err == nil {
+		t.Errorf("Expected error when releasing resource after pool closed, but got none")
+	}
+
+	if !errors.Is(err, ErrPoolClosed) {
+		t.Errorf("Expected pool closed error, but got: %v", err)
 	}
 }
 
@@ -813,5 +889,141 @@ func TestIdleTimeout(t *testing.T) {
 			t.Errorf("Expected resources to be destroyed, got %d", mockManager.GetDestroyCount())
 		}
 	})
+
+}
+
+func TestClosePool(t *testing.T) {
+	tests := []struct {
+		name                string
+		poolConfig          PoolConfig[MockResource]
+		countOfGetCalls     int
+		countOfReleaseCalls int
+		expectedErr         error
+		closeExtra          bool // this denotes if the pool should be closed again after the first close. If set to true, it's expected that the first close will not return an error
+	}{
+		{
+			name: "Close pool without error when all managed resources are in the pool",
+			poolConfig: PoolConfig[MockResource]{
+				ResourceManager: &MockResourceManager{},
+				MaxResources:    10,
+				MinResources:    5,
+				IdleTimeout:     time.Second * 30,
+			},
+			countOfGetCalls:     2,
+			countOfReleaseCalls: 2,
+			expectedErr:         nil,
+			closeExtra:          false,
+		},
+		{
+			name: "Close pool with error when some resources are still in use",
+			poolConfig: PoolConfig[MockResource]{
+				ResourceManager: &MockResourceManager{},
+				MaxResources:    10,
+				MinResources:    5,
+				IdleTimeout:     time.Second * 30,
+			},
+			countOfGetCalls:     2,
+			countOfReleaseCalls: 1,
+			expectedErr:         ErrResourcesActive,
+			closeExtra:          false,
+		},
+		{
+			name: "Close pool should fail if not able to destroy resources",
+			poolConfig: PoolConfig[MockResource]{
+				ResourceManager: &MockResourceManager{failDestroy: true},
+				MaxResources:    10,
+				MinResources:    5,
+				IdleTimeout:     time.Second * 30,
+			},
+			countOfGetCalls:     2,
+			countOfReleaseCalls: 2,
+			expectedErr:         ErrDestroyFailed,
+			closeExtra:          false,
+		},
+		{
+			name: "Close pool should fail if pool is already closed",
+			poolConfig: PoolConfig[MockResource]{
+				ResourceManager: &MockResourceManager{},
+				MaxResources:    10,
+				MinResources:    5,
+				IdleTimeout:     time.Second * 30,
+			},
+			countOfGetCalls:     2,
+			countOfReleaseCalls: 2,
+			expectedErr:         ErrPoolClosed,
+			closeExtra:          true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pool, err := NewPooler(tc.poolConfig)
+			if err != nil {
+				t.Fatalf("Failed to create pool: %v", err)
+			}
+
+			resources := make([]MockResource, tc.countOfGetCalls)
+			for range tc.countOfGetCalls {
+				resource, err := pool.Get(context.TODO())
+				if err != nil {
+					t.Fatalf("Failed to get resource: %v", err)
+				}
+				resources = append(resources, resource)
+			}
+
+			for i := range tc.countOfReleaseCalls {
+				if err := pool.Release(resources[i]); err != nil {
+					t.Fatalf("Failed to release resource: %v", err)
+				}
+			}
+
+			err = pool.Close()
+			if tc.closeExtra {
+				if err != nil {
+					// It's expected that the first close will not error out if closeExtra is true
+					t.Fatalf("Expected first close to not error out, got: %v", err)
+				}
+				err = pool.Close()
+			}
+
+			if err != nil && tc.expectedErr == nil {
+				t.Fatalf("Expected no error, got: %v", err)
+			}
+
+			if err == nil && tc.expectedErr != nil {
+				t.Fatalf("Expected error %v, got none", tc.expectedErr)
+			}
+
+			if err != nil && tc.expectedErr != nil && !errors.Is(err, tc.expectedErr) {
+				t.Fatalf("Expected error %v, got %v", tc.expectedErr, err)
+			}
+
+			// Only test destroy condition if the pool is not expected to error out
+			if tc.expectedErr != nil {
+				return
+			}
+
+			//When pool is closed successfully, total resources created and total resources destroyed should be the same
+			totalResourcesCreated := pool.config.ResourceManager.(*MockResourceManager).GetCreateCount()
+			totalResourcesDestroyed := pool.config.ResourceManager.(*MockResourceManager).GetDestroyCount()
+
+			if totalResourcesCreated != totalResourcesDestroyed {
+				t.Fatalf("Expected %d created resources to be destroyed, but only %d was destroyed", totalResourcesCreated, totalResourcesDestroyed)
+			}
+
+			// Test if the semaphore is empty
+			select {
+			case <-pool.sem:
+				t.Fatalf("Expected semaphore to be empty after pool close, but it was not")
+			default:
+				// This is expected, semaphore should be empty
+			}
+
+			if !pool.closed {
+				t.Fatalf("Expected closed property in pool to be true, but it was not")
+			}
+
+		})
+	}
 
 }
