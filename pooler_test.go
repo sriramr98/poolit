@@ -18,7 +18,6 @@ type MockResourceManager struct {
 	createCounter  int
 	destroyCounter int
 	failCreate     bool
-	failValid      bool
 	failDestroy    bool
 	mutex          sync.Mutex
 }
@@ -45,10 +44,6 @@ func (m *MockResourceManager) Destroy(r MockResource) error {
 
 	m.destroyCounter++
 	return nil
-}
-
-func (m *MockResourceManager) Valid(r MockResource) bool {
-	return !m.failValid
 }
 
 func (m *MockResourceManager) GetCreateCount() int {
@@ -275,15 +270,6 @@ func TestGetAndRelease(t *testing.T) {
 		t.Errorf("Expected resources count to be %d after release, got %d",
 			config.MinResources, len(pooler.resources))
 	}
-
-	// Test invalid resource release
-	rm.failValid = true
-	resourceInvalid := MockResource{ID: 999} // Invalid resource
-
-	if err := pooler.Release(resourceInvalid); err == nil {
-		t.Errorf("Expected error when releasing invalid resource, but got none")
-	}
-
 }
 
 func TestGetWithTimeoutFailure(t *testing.T) {

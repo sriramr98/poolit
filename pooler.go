@@ -102,10 +102,6 @@ func (p *Pooler[T]) Get(ctx context.Context) (T, error) {
 
 // Release Adds a resource back to the pool once used
 func (p *Pooler[T]) Release(resource T) error {
-	if !p.config.ResourceManager.Valid(resource) {
-		return ErrInvalidResource
-	}
-
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

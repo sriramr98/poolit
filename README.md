@@ -13,7 +13,6 @@
 - **Intelligent Scaling**: Proactively manages resources to maintain optimal performance
 - **Idle Timeout**: Automatically downsizes pool during periods of inactivity
 - **Context Support**: Respects context deadlines and cancellation
-- **Resource Validation**: Validates resources before returning them to the pool
 - **Comprehensive Stats**: Monitor pool utilization and performance
 - **Thread-Safe**: Fully concurrent-safe implementation
 - **Clean Shutdown**: Graceful resource cleanup on pool closure
@@ -99,14 +98,13 @@ func main() {
 - **Semaphore Pattern**: Uses a buffered channel as a semaphore to control concurrent resource usage
 - **Lazy Allocation**: Creates resources on-demand up to the configured maximum
 - **Resource Scaling**: Proactively scales the resource pool when usage exceeds 50% of capacity
-- **Resource Validation**: Validates resources before returning them to the pool
 
 ### Dynamic Scaling
 
 The pool intelligently manages resources:
 
 1. **Initialization**: Creates `MinResources` during pool creation
-2. **Scaling Up**: When resource usage exceeds 50% of the current capacity, it proactively creates more resources
+2. **Scaling Up**: When resource usage exceeds 50% of the current capacity, it proactively creates more resources upto `MaxResources`
 3. **Scaling Down**: During periods of inactivity, it trims excess resources down to `MinResources`
 
 ### Context Integration
@@ -125,23 +123,13 @@ resource, err := pool.Get(ctx)
 
 `poolit` provides detailed error types:
 
-- `ErrPoolClosed`: Returned when attempting to use a closed pool
-- `ErrPoolTimeout`: Returned when resource acquisition times out
-- `ErrInvalidConfig`: Returned for invalid pool configuration
-- `ErrNoResourcesLeft`: Returned when no resources can be acquired
+- `ErrInvalidConfig`: This error indicates an invalid configuration for the pool
+- `ErrTimedOut`: This error indicates that the context provided to the `Get` method has timed out
+- `ErrPoolClosed`: This error indicates that the pool has been closed and no further operations can be performed
+- `ErrDestroyFailed`: This error indicates that a resource could not be destroyed when the pool is closed based on the `Destroy` method of the resource manager
+- `ErrResourcesActive`: This error indicates that an attempt to close the pool was made while there were resources still being used and haven't been released back to the pool.
 
 ## Advanced Configuration
-
-### Resource Validation
-
-Implement the `Validate` method to check resource health before reuse:
-
-```go
-func (m *MyResourceManager) Validate(resource MyResource) bool {
-    // Check if the resource is still valid and healthy
-    return resource.IsHealthy()
-}
-```
 
 ### Custom Resource Types
 
@@ -150,7 +138,6 @@ Any resource type can be managed, as long as you implement the `ResourceManager`
 ```go
 type ResourceManager[T any] interface {
     Create() (T, error)
-    Validate(T) bool
     Destroy(T) error
 }
 ```
